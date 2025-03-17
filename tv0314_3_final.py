@@ -340,17 +340,95 @@ high_end_colors = {
 
 # 数据库连接函数
 def get_connection():
-    try:
-        return sqlite3.connect("/Users/coco/Documents/TV/202301-202501tv_avc_bi_jd_new1.db")  # 使用新数据库
-    except sqlite3.OperationalError as e:
-        st.error(f"新数据库连接错误：{e}。请确保数据库文件存在于指定路径。")
-        # 尝试回退到旧数据库
+    # 检查是否在Streamlit Cloud环境中
+    is_cloud = os.environ.get("STREAMLIT_SERVER_IP") is not None
+    
+    # 尝试多个可能的数据库路径
+    possible_paths = [
+        "/mount/src/mitv/202301-202501tv_avc_bi_jd.db",  # Streamlit Cloud路径
+        "202301-202501tv_avc_bi_jd.db",                 # 相对路径
+        "/Users/coco/Documents/TV/202301-202501tv_avc_bi_jd_new1.db",  # 本地绝对路径
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202501tv_avc_bi_jd.db")  # 脚本同目录
+    ]
+    
+    # 打印当前工作目录和文件列表，帮助调试
+    st.sidebar.markdown("### 调试信息")
+    st.sidebar.text(f"当前目录: {os.getcwd()}")
+    if is_cloud:
+        st.sidebar.text("Streamlit Cloud环境")
+    
+    # 尝试连接所有可能的路径
+    for db_path in possible_paths:
         try:
-            st.warning("正在尝试使用旧版数据库...")
-            return sqlite3.connect("202301-202501tv_avc_bi_jd.db")
-        except sqlite3.OperationalError as e2:
-            st.error(f"备用数据库连接也失败：{e2}")
-            return None
+            if os.path.exists(db_path):
+                st.sidebar.text(f"找到数据库: {db_path}")
+                return sqlite3.connect(db_path)
+        except Exception as e:
+            continue
+    
+    # 如果所有路径都失败，返回None，后续将使用模拟数据
+    st.warning("⚠️ 无法连接到数据库，将使用模拟数据进行展示")
+    return None
+
+# 生成示例数据
+def generate_demo_data():
+    """生成模拟销售数据用于演示"""
+    st.info("🔔 当前展示的是模拟数据，仅用于演示界面功能")
+    
+    # 创建日期范围
+    start_date = pd.Timestamp('2023-01-01')
+    end_date = pd.Timestamp('2025-01-01')
+    dates = pd.date_range(start=start_date, end=end_date, freq='MS')  # 月初
+    
+    # 创建品牌列表
+    brands = ['小米', '红米', '海信', 'TCL', '创维', '索尼', '三星', 'LG']
+    
+    # 生成数据框架
+    rows = []
+    for date in dates:
+        year = date.year
+        month = date.month
+        time_code = int(f"{year}{month:02d}")
+        
+        for brand in brands:
+            # 模拟不同品牌的销量和价格情况
+            if brand in ['小米', '红米']:
+                sales = np.random.randint(50000, 100000)
+                price = np.random.randint(2000, 6000)
+            elif brand in ['海信', 'TCL', '创维']:
+                sales = np.random.randint(40000, 90000)
+                price = np.random.randint(3000, 7000)
+            else:
+                sales = np.random.randint(10000, 50000)
+                price = np.random.randint(5000, 15000)
+            
+            revenue = sales * price
+            market_share = np.random.uniform(5, 20)
+            
+            rows.append({
+                '时间': time_code,
+                '品牌': brand,
+                '销量': sales,
+                '销售额': revenue,
+                '均价': price,
+                '市场份额': market_share
+            })
+    
+    # 创建数据框
+    df = pd.DataFrame(rows)
+    
+    # 添加必要的日期计算字段
+    df['日期'] = pd.to_datetime(df['时间'].astype(str), format='%Y%m')
+    df['年份'] = df['日期'].dt.year
+    df['月份'] = df['日期'].dt.month
+    df['季度'] = df['日期'].dt.quarter
+    
+    # 品牌分组处理
+    df['品牌系'] = '其他'
+    for group_name, brands in brand_groups.items():
+        df.loc[df['品牌'].isin(brands), '品牌系'] = group_name
+    
+    return df
 
 # 添加辅助函数，确保每次查询使用新连接并正确关闭
 def execute_query(query):
@@ -358,9 +436,20 @@ def execute_query(query):
     conn = None
     try:
         conn = get_connection()
+        if conn is None:
+            # 如果无法连接到数据库，返回示例数据
+            if query == "SELECT * FROM sales_data":
+                return generate_demo_data()
+            else:
+                # 对于其他查询，返回空数据框
+                st.warning(f"无法执行查询: {query}")
+                return pd.DataFrame()
         return pd.read_sql(query, conn)
     except Exception as e:
         st.error(f"查询执行错误：{e}")
+        # 如果是销售数据查询，返回示例数据
+        if query == "SELECT * FROM sales_data":
+            return generate_demo_data()
         return pd.DataFrame()
     finally:
         if conn:
