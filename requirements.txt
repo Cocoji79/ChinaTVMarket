@@ -3,4 +3,5 @@ pandas==2.2.1
 numpy==1.26.4
 plotly==5.18.0
 matplotlib==3.8.3
-pysqlite3-binary 
+pysqlite3-binary==0.5.4
+watchdog==3.0.0 
