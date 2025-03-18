@@ -402,6 +402,19 @@ def generate_demo_data():
     # 创建品牌列表
     brands = ['小米', '红米', '海信', 'TCL', '创维', '索尼', '三星', 'LG']
     
+    # 尺寸列表
+    sizes = [32, 43, 50, 55, 65, 75, 85, 98, 100]
+    
+    # MiniLED标记
+    miniled_options = ['是', '否']
+    
+    # 价格段
+    price_segments = [
+        'A.0-999', 'B.1000-1999', 'C.2000-2999', 'D.3000-3999', 
+        'E.4000-4999', 'F.5000-5999', 'G.6000-6999', 'H.7000-7999',
+        'I.8000-8999', 'J.9000-9999', 'K.10000-11999', 'L.12000-13999'
+    ]
+    
     # 生成数据框架
     rows = []
     for date in dates:
@@ -410,28 +423,56 @@ def generate_demo_data():
         time_code = int(f"{year}{month:02d}")
         
         for brand in brands:
-            # 模拟不同品牌的销量和价格情况
+            # 根据品牌选择可能的尺寸
             if brand in ['小米', '红米']:
+                possible_sizes = [43, 55, 65, 75, 85]
                 sales = np.random.randint(50000, 100000)
                 price = np.random.randint(2000, 6000)
+                miniled_prob = 0.3  # 30%的产品是MiniLED
             elif brand in ['海信', 'TCL', '创维']:
+                possible_sizes = [32, 43, 50, 55, 65, 75]
                 sales = np.random.randint(40000, 90000)
                 price = np.random.randint(3000, 7000)
+                miniled_prob = 0.2  # 20%的产品是MiniLED
             else:
+                possible_sizes = [55, 65, 75, 85, 98]
                 sales = np.random.randint(10000, 50000)
                 price = np.random.randint(5000, 15000)
+                miniled_prob = 0.5  # 50%的产品是MiniLED
             
-            revenue = sales * price
-            market_share = np.random.uniform(5, 20)
-            
-            rows.append({
-                '时间': time_code,
-                '品牌': brand,
-                '销量': sales,
-                '销额': revenue,
-                '均价': price,
-                '市场份额': market_share
-            })
+            # 为每个品牌生成多个尺寸的数据
+            for _ in range(5):  # 每个品牌每月生成5条不同尺寸的记录
+                size = np.random.choice(possible_sizes)
+                
+                # 调整销量，大尺寸销量较少
+                size_factor = 1.0 - (size - 32) / 100  # 尺寸越大，系数越小
+                adjusted_sales = int(sales * size_factor * np.random.uniform(0.8, 1.2))
+                
+                # 调整价格，大尺寸价格较高
+                size_price_factor = 1.0 + (size - 32) / 50  # 尺寸越大，系数越大
+                adjusted_price = int(price * size_price_factor * np.random.uniform(0.9, 1.1))
+                
+                # 计算销额
+                revenue = adjusted_sales * adjusted_price
+                
+                # 确定是否为MiniLED
+                is_miniled = '是' if np.random.random() < miniled_prob else '否'
+                
+                # 确定价格段
+                price_segment_index = min(int(adjusted_price / 1000), len(price_segments) - 1)
+                price_segment = price_segments[price_segment_index]
+                
+                rows.append({
+                    '时间': time_code,
+                    '品牌': brand,
+                    '尺寸': size,
+                    'MiniLED': is_miniled,
+                    '销量': adjusted_sales,
+                    '销额': revenue,
+                    '均价': adjusted_price,
+                    '市场份额': np.random.uniform(1, 10),
+                    '价格段': price_segment
+                })
     
     # 创建数据框
     df = pd.DataFrame(rows)
@@ -486,11 +527,53 @@ def load_data():
     try:
         sales_df = execute_query("SELECT * FROM sales_data")
         
+        if sales_df.empty:
+            st.warning("数据库查询返回空结果，将使用模拟数据")
+            sales_df = generate_demo_data()
+            
+        # 确保必要的列存在
+        required_columns = ['时间', '品牌', '销量', '销额']
+        if not all(col in sales_df.columns for col in required_columns):
+            missing_cols = [col for col in required_columns if col not in sales_df.columns]
+            st.warning(f"数据库缺少必要的列: {missing_cols}，将使用模拟数据")
+            sales_df = generate_demo_data()
+        
         # 处理时间字段，转换为日期格式
         sales_df['日期'] = pd.to_datetime(sales_df['时间'].astype(str), format='%Y%m')
         sales_df['年份'] = sales_df['日期'].dt.year
         sales_df['月份'] = sales_df['日期'].dt.month
         sales_df['季度'] = sales_df['日期'].dt.quarter
+        
+        # 确保尺寸列存在，如果不存在则添加
+        if '尺寸' not in sales_df.columns:
+            st.warning("数据中缺少尺寸信息，将随机生成尺寸数据")
+            # 为缺少尺寸的记录生成随机尺寸
+            sizes = [32, 43, 50, 55, 65, 75, 85]
+            size_weights = [0.15, 0.2, 0.1, 0.25, 0.2, 0.07, 0.03]  # 权重
+            sales_df['尺寸'] = np.random.choice(sizes, size=len(sales_df), p=size_weights)
+        
+        # 确保MiniLED列存在
+        if 'MiniLED' not in sales_df.columns:
+            st.warning("数据中缺少MiniLED信息，将随机生成MiniLED标记")
+            # 为缺少MiniLED的记录生成随机标记
+            sales_df['MiniLED'] = np.random.choice(['是', '否'], size=len(sales_df), p=[0.2, 0.8])
+        
+        # 确保价格段列存在
+        if '价格段' not in sales_df.columns:
+            st.warning("数据中缺少价格段信息，将根据均价生成价格段")
+            # 计算均价
+            sales_df['均价'] = sales_df['销额'] / sales_df['销量']
+            # 定义价格段
+            price_segments = [
+                'A.0-999', 'B.1000-1999', 'C.2000-2999', 'D.3000-3999', 
+                'E.4000-4999', 'F.5000-5999', 'G.6000-6999', 'H.7000-7999',
+                'I.8000-8999', 'J.9000-9999', 'K.10000-11999', 'L.12000-13999'
+            ]
+            # 根据均价确定价格段
+            def assign_price_segment(price):
+                segment_index = min(int(price / 1000), len(price_segments) - 1)
+                return price_segments[segment_index]
+            sales_df['价格段'] = sales_df['均价'].apply(assign_price_segment)
         
         # 品牌分组处理
         sales_df['品牌系'] = '其他'
@@ -503,7 +586,8 @@ def load_data():
         return sales_df
     except Exception as e:
         st.error(f"数据加载错误: {e}")
-        return pd.DataFrame()
+        st.warning("将使用模拟数据继续...")
+        return generate_demo_data()
 
 # 加载数据
 try:
@@ -651,28 +735,6 @@ with tab1:
                         <h3 style="color: {revenue_color};">{revenue_mom:.1f}% {'↑' if revenue_mom >= 0 else '↓'}</h3>
                         总销售额: {feb_revenue/100000000:.1f}亿元
                         """, unsafe_allow_html=True)
-                
-                # 品牌表现分析
-                st.markdown("#### 品牌表现")
-                brand_feb = feb_2025_data.groupby('品牌系')[['销量', '销额']].sum().reset_index()
-                brand_feb['均价'] = brand_feb['销额'] / brand_feb['销量']
-                brand_feb = brand_feb.sort_values('销量', ascending=False)
-                
-                # 显示表格
-                st.dataframe(
-                    brand_feb.rename(columns={
-                        '销量': '销量(万台)', 
-                        '销额': '销售额(亿元)',
-                        '均价': '均价(元)'
-                    }).assign(
-                        **{
-                            '销量(万台)': lambda x: (x['销量']/10000).round(2),
-                            '销售额(亿元)': lambda x: (x['销额']/100000000).round(2),
-                            '均价(元)': lambda x: x['均价'].round(0)
-                        }
-                    )[['品牌系', '销量(万台)', '销售额(亿元)', '均价(元)']],
-                    use_container_width=True
-                )
                 
                 # 分隔线
                 st.markdown("---")
