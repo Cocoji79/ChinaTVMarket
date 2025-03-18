@@ -352,7 +352,7 @@ def get_connection():
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202502tv_avc_bi_jd.db"),  # 脚本同目录
         # 云环境路径
         "/mount/src/ChinaTVMarket/202301-202502tv_avc_bi_jd.db",  # Streamlit Cloud路径
-        "202301-202502tv_avc_bi_jd.db.db",                 # 相对路径
+        "202301-202502tv_avc_bi_jd.db",                 # 相对路径
     ]
     
     # 打印更多调试信息
@@ -396,7 +396,7 @@ def generate_demo_data():
     
     # 创建日期范围
     start_date = pd.Timestamp('2023-01-01')
-    end_date = pd.Timestamp('2025-01-01')
+    end_date = pd.Timestamp('2025-03-01')  # 更新到2025年3月1日以包含2月数据
     dates = pd.date_range(start=start_date, end=end_date, freq='MS')  # 月初
     
     # 创建品牌列表
@@ -576,7 +576,7 @@ if 'demo_data_used' in st.session_state and st.session_state.demo_data_used:
 else:
     # 更新消息，显示实际使用的数据库
     db_path = st.session_state.get('actual_db_path', "/Users/coco/Documents/StreamlitApp/ChinaTVMarket/202301-202502tv_avc_bi_jd.db")
-    st.success(f"数据库已连接: {db_path}，包含2023年1月至2025年1月的销售数据。")
+    st.success(f"数据库已连接: {db_path}，包含2023年1月至2025年2月的销售数据。")
 
 # 修复数据范围显示
 if selected_years:
@@ -604,6 +604,80 @@ with tab1:
         <p style="color: white; text-align: center; font-size: 16px;">品牌销售分布与高端市场表现</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # 添加最新数据分析摘要
+    if not ('demo_data_used' in st.session_state and st.session_state.demo_data_used):
+        try:
+            # 尝试获取2025年2月数据
+            feb_2025_data = df[df['时间'] == 202502].copy()
+            if not feb_2025_data.empty:
+                st.markdown("""
+                <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #4de1cb;">
+                    <h3 style="color: #4de1cb; margin-top: 0;">最新数据 - 2025年2月分析摘要</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 创建2025年2月与1月对比的分析
+                jan_2025_data = df[df['时间'] == 202501].copy()
+                
+                # 计算销量与销售额
+                feb_sales = feb_2025_data['销量'].sum()
+                feb_revenue = feb_2025_data['销额'].sum()
+                
+                # 环比变化
+                if not jan_2025_data.empty:
+                    jan_sales = jan_2025_data['销量'].sum()
+                    jan_revenue = jan_2025_data['销额'].sum()
+                    
+                    sales_mom = (feb_sales - jan_sales) / jan_sales * 100
+                    revenue_mom = (feb_revenue - jan_revenue) / jan_revenue * 100
+                    
+                    # 设置环比变化的颜色
+                    sales_color = "#4CAF50" if sales_mom >= 0 else "#F44336"
+                    revenue_color = "#4CAF50" if revenue_mom >= 0 else "#F44336"
+                    
+                    # 分析小结
+                    mom_cols = st.columns(2)
+                    with mom_cols[0]:
+                        st.markdown(f"""
+                        #### 销量环比
+                        <h3 style="color: {sales_color};">{sales_mom:.1f}% {'↑' if sales_mom >= 0 else '↓'}</h3>
+                        总销量: {feb_sales/10000:.1f}万台
+                        """, unsafe_allow_html=True)
+                    
+                    with mom_cols[1]:
+                        st.markdown(f"""
+                        #### 销售额环比
+                        <h3 style="color: {revenue_color};">{revenue_mom:.1f}% {'↑' if revenue_mom >= 0 else '↓'}</h3>
+                        总销售额: {feb_revenue/100000000:.1f}亿元
+                        """, unsafe_allow_html=True)
+                
+                # 品牌表现分析
+                st.markdown("#### 品牌表现")
+                brand_feb = feb_2025_data.groupby('品牌系')[['销量', '销额']].sum().reset_index()
+                brand_feb['均价'] = brand_feb['销额'] / brand_feb['销量']
+                brand_feb = brand_feb.sort_values('销量', ascending=False)
+                
+                # 显示表格
+                st.dataframe(
+                    brand_feb.rename(columns={
+                        '销量': '销量(万台)', 
+                        '销额': '销售额(亿元)',
+                        '均价': '均价(元)'
+                    }).assign(
+                        **{
+                            '销量(万台)': lambda x: (x['销量']/10000).round(2),
+                            '销售额(亿元)': lambda x: (x['销额']/100000000).round(2),
+                            '均价(元)': lambda x: x['均价'].round(0)
+                        }
+                    )[['品牌系', '销量(万台)', '销售额(亿元)', '均价(元)']],
+                    use_container_width=True
+                )
+                
+                # 分隔线
+                st.markdown("---")
+        except Exception as e:
+            st.warning(f"无法加载2025年2月的数据分析：{e}")
     
     # 关键指标卡片
     col1, col2, col3 = st.columns(3)  # 改为3列，去掉了品牌数量
@@ -848,7 +922,7 @@ with tab1:
     
     st.plotly_chart(fig_trend, use_container_width=True)
 
-# Tab 2: 时间分析
+# Tab 2: 时间分析面板
 with tab2:
     # 添加渐变背景标题
     st.markdown("""
@@ -857,6 +931,117 @@ with tab2:
         <p style="color: white; text-align: center; font-size: 16px;">季度与月度销售趋势及增长率分析</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # 添加2025年2月最新月度数据分析板块
+    if not ('demo_data_used' in st.session_state and st.session_state.demo_data_used):
+        try:
+            # 确认数据中包含2025年2月
+            if 202502 in df['时间'].unique():
+                st.subheader("2025年2月市场表现")
+                
+                # 创建柱状图对比2024年2月与2025年2月
+                feb_2025 = df[df['时间'] == 202502]
+                feb_2024 = df[df['时间'] == 202402]
+                
+                if not feb_2024.empty and not feb_2025.empty:
+                    # 按品牌系分组
+                    brand_compare = []
+                    
+                    for brand in df['品牌系'].unique():
+                        feb_2024_brand = feb_2024[feb_2024['品牌系'] == brand]['销量'].sum()
+                        feb_2025_brand = feb_2025[feb_2025['品牌系'] == brand]['销量'].sum()
+                        
+                        if feb_2024_brand > 0 and feb_2025_brand > 0:
+                            yoy_change = (feb_2025_brand - feb_2024_brand) / feb_2024_brand * 100
+                            brand_compare.append({
+                                '品牌系': brand,
+                                '2024年2月': sales_to_wan(feb_2024_brand),
+                                '2025年2月': sales_to_wan(feb_2025_brand),
+                                '同比': yoy_change
+                            })
+                    
+                    if brand_compare:
+                        # 创建DataFrame并排序
+                        brand_compare_df = pd.DataFrame(brand_compare)
+                        brand_compare_df = brand_compare_df.sort_values('2025年2月', ascending=False)
+                        
+                        # 创建图表
+                        fig = go.Figure()
+                        
+                        # 添加2024年2月数据
+                        fig.add_trace(go.Bar(
+                            x=brand_compare_df['品牌系'],
+                            y=brand_compare_df['2024年2月'],
+                            name='2024年2月',
+                            marker_color='#90CAF9'
+                        ))
+                        
+                        # 添加2025年2月数据
+                        fig.add_trace(go.Bar(
+                            x=brand_compare_df['品牌系'],
+                            y=brand_compare_df['2025年2月'],
+                            name='2025年2月',
+                            marker_color='#FF8630'
+                        ))
+                        
+                        # 添加同比变化百分比
+                        fig.add_trace(go.Scatter(
+                            x=brand_compare_df['品牌系'],
+                            y=brand_compare_df['同比'],
+                            mode='text+markers',
+                            marker=dict(color='rgba(0,0,0,0)'),
+                            text=[f"{x:.1f}%" for x in brand_compare_df['同比']],
+                            textposition='top center',
+                            name='同比变化'
+                        ))
+                        
+                        # 设置图表布局
+                        fig.update_layout(
+                            title="各品牌系2月销量同比对比 (万台)",
+                            barmode='group',
+                            xaxis_title='品牌系',
+                            yaxis_title='销量 (万台)',
+                            legend=dict(
+                                orientation='h',
+                                yanchor='bottom',
+                                y=1.02,
+                                xanchor='right',
+                                x=1
+                            )
+                        )
+                        
+                        # 显示图表
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 总销量同比情况
+                        total_2024 = feb_2024['销量'].sum()
+                        total_2025 = feb_2025['销量'].sum()
+                        total_yoy = (total_2025 - total_2024) / total_2024 * 100
+                        
+                        # 显示总销量同比
+                        st.markdown(f"""
+                        **市场总体表现**: 2025年2月总销量为 **{sales_to_wan(total_2025):.2f}万台**，
+                        相比2024年2月的 {sales_to_wan(total_2024):.2f}万台，
+                        同比 **{total_yoy:.1f}%** {"增长" if total_yoy >= 0 else "下降"}。
+                        """)
+                        
+                        # 均价变化
+                        avg_price_2024 = feb_2024['销额'].sum() / feb_2024['销量'].sum()
+                        avg_price_2025 = feb_2025['销额'].sum() / feb_2025['销量'].sum()
+                        price_yoy = (avg_price_2025 - avg_price_2024) / avg_price_2024 * 100
+                        
+                        st.markdown(f"""
+                        **均价表现**: 2025年2月平均售价为 **{avg_price_2025:.0f}元**，
+                        相比2024年2月的 {avg_price_2024:.0f}元，
+                        同比 **{price_yoy:.1f}%** {"上涨" if price_yoy >= 0 else "下降"}。
+                        """)
+                        
+                        # 分隔线
+                        st.markdown("---")
+                else:
+                    st.info("无法进行同比分析，缺少2024年2月或2025年2月的数据。")
+        except Exception as e:
+            st.warning(f"在分析2025年2月数据时出错：{e}")
     
     # 按季度趋势分析
     st.subheader("季度销售趋势")
@@ -976,6 +1161,11 @@ with tab2:
         coloraxis_showscale=False
     )
     
+    fig_heatmap.update_traces(
+        y=sales_to_wan(monthly_heatmap['销量']),
+        hovertemplate='%{x}月: %{y:.1f}万台'
+    )
+    
     st.plotly_chart(fig_heatmap, use_container_width=True)
 
 # Tab 3: 产品分析
@@ -991,380 +1181,449 @@ with tab3:
     # 不同尺寸电视销量排行
     st.subheader("不同尺寸销量分布")
     
-    size_dist = df_filtered.groupby('尺寸').agg({
-        '销量': 'sum',
-        '销额': 'sum'
-    }).reset_index()
-                # 筛选尺寸不大于120英寸的数据
-    size_dist = size_dist[size_dist["尺寸"] <= 120]
-    
-    size_dist['平均价格'] = size_dist['销额'] / size_dist['销量']
-    size_dist = size_dist.sort_values('尺寸')
-    
-    # 使用默认的销量指标而不是动态选择
-    fig_size = px.bar(
-        size_dist,
-        x='尺寸',
-        y='销量',
-        color='尺寸',
-        color_continuous_scale=px.colors.sequential.Oranges
-    )
-    
-    # 更新尺寸分布
-    fig_size.update_layout(
-        xaxis_title="尺寸(英寸)",
-        yaxis_title="销量(万台)",
-        showlegend=False,
-        xaxis=dict(range=[15, 120])  # 设置x轴范围从15到120英寸
-    )
-    fig_size.update_traces(
-        y=sales_to_wan(size_dist['销量']),
-        hovertemplate='%{x}英寸: %{y:.1f}万台'
-    )
-    
-    st.plotly_chart(fig_size, use_container_width=True)
+    try:
+        size_dist = df_filtered.groupby('尺寸').agg({
+            '销量': 'sum',
+            '销额': 'sum'
+        }).reset_index()
+        # 筛选尺寸不大于120英寸的数据
+        size_dist = size_dist[size_dist["尺寸"] <= 120]
+        
+        if size_dist.empty:
+            st.warning(f"所选时间段内没有尺寸数据，请尝试选择其他时间段。")
+        else:
+            size_dist['平均价格'] = size_dist['销额'] / size_dist['销量']
+            size_dist = size_dist.sort_values('尺寸')
+            
+            # 使用默认的销量指标而不是动态选择
+            fig_size = px.bar(
+                size_dist,
+                x='尺寸',
+                y='销量',
+                color='尺寸',
+                color_continuous_scale=px.colors.sequential.Oranges
+            )
+            
+            # 更新尺寸分布
+            fig_size.update_layout(
+                xaxis_title="尺寸(英寸)",
+                yaxis_title="销量(万台)",
+                showlegend=False,
+                xaxis=dict(range=[15, 120])  # 设置x轴范围从15到120英寸
+            )
+            fig_size.update_traces(
+                y=sales_to_wan(size_dist['销量']),
+                hovertemplate='%{x}英寸: %{y:.1f}万台'
+            )
+            
+            st.plotly_chart(fig_size, use_container_width=True)
+    except Exception as e:
+        st.warning(f"无法显示尺寸销量分布数据")
+        st.error(f"错误详情: {str(e)}")
     
     # 不同尺寸销额分布
     st.subheader("不同尺寸销额分布")
-    fig_size_revenue = px.bar(
-        size_dist,
-        x='尺寸',
-        y='销额',
-        color='尺寸',
-        color_continuous_scale=px.colors.sequential.Blues
-    )
     
-    # 更新尺寸销额分布
-    fig_size_revenue.update_layout(
-        xaxis_title="尺寸(英寸)",
-        yaxis_title="销额(亿元)",
-        showlegend=False,
-        xaxis=dict(range=[15, 120])  # 设置x轴范围从15到120英寸
-    )
-    fig_size_revenue.update_traces(
-        y=revenue_to_yi(size_dist['销额']),
-        hovertemplate='%{x}英寸: %{y:.2f}亿元'
-    )
-    
-    st.plotly_chart(fig_size_revenue, use_container_width=True)
+    try:
+        if 'size_dist' in locals() and not size_dist.empty:
+            fig_size_revenue = px.bar(
+                size_dist,
+                x='尺寸',
+                y='销额',
+                color='尺寸',
+                color_continuous_scale=px.colors.sequential.Blues
+            )
+            
+            # 更新尺寸销额分布
+            fig_size_revenue.update_layout(
+                xaxis_title="尺寸(英寸)",
+                yaxis_title="销额(亿元)",
+                showlegend=False,
+                xaxis=dict(range=[15, 120])  # 设置x轴范围从15到120英寸
+            )
+            fig_size_revenue.update_traces(
+                y=revenue_to_yi(size_dist['销额']),
+                hovertemplate='%{x}英寸: %{y:.2f}亿元'
+            )
+            
+            st.plotly_chart(fig_size_revenue, use_container_width=True)
+        else:
+            st.warning("没有尺寸数据可用于生成销额分布图")
+    except Exception as e:
+        st.warning(f"无法显示尺寸销额分布数据")
+        st.error(f"错误详情: {str(e)}")
     
     # 价格段分布分析
     st.subheader("价格段分布")
     
-    price_segment_sales = df_filtered.groupby('价格段').agg({
+    try:
+        price_segment_sales = df_filtered.groupby('价格段').agg({
+            '销量': 'sum',
+            '销额': 'sum'
+        }).reset_index()
+        
+        if price_segment_sales.empty:
+            st.warning(f"所选时间段内没有价格段数据，请尝试选择其他时间段。")
+        else:
+            # 确保价格段有序显示
+            def extract_price_segment_value(x):
+                # 处理以字母开头的价格段
+                if x[0].isalpha() and '.' in x:
+                    # 从第一个数字开始提取
+                    parts = x.split('.')
+                    if len(parts) > 1:
+                        # 提取第二部分的数字
+                        if '-' in parts[1]:
+                            return int(parts[1].split('-')[0])
+                        elif '以上' in parts[1]:
+                            return int(parts[1].split('以上')[0])
+                        return 0
+                # 处理原有的格式
+                elif '-' in x:
+                    return int(x.split('-')[0])
+                elif '+' in x:
+                    return int(x.split('+')[0])
+                return 0
+            
+            # 使用自定义函数进行排序
+            price_segment_order = sorted(price_segment_sales['价格段'].unique(), key=extract_price_segment_value)
+            price_segment_sales['价格段排序'] = price_segment_sales['价格段'].apply(lambda x: price_segment_order.index(x))
+            price_segment_sales = price_segment_sales.sort_values('价格段排序')
+            
+            # 使用销量作为固定指标
+            fig_price_segment = px.bar(
+                price_segment_sales,
+                x='价格段',
+                y='销量',
+                color='销量',
+                color_continuous_scale=px.colors.sequential.Blues
+            )
+            
+            # 更新价格段分布
+            fig_price_segment.update_layout(
+                xaxis_title="价格段",
+                yaxis_title="销量(万台)",
+                xaxis={'categoryorder':'array', 'categoryarray':price_segment_order},  # 使用全部排序后的价格段
+                showlegend=False,  # 设置x轴范围从15到120英寸
+            )
+            fig_price_segment.update_traces(
+                y=sales_to_wan(price_segment_sales['销量']),
+                hovertemplate='%{x}: %{y:.1f}万台'
+            )
+            
+            st.plotly_chart(fig_price_segment, use_container_width=True)
+    except Exception as e:
+        st.warning(f"无法显示价格段分布数据")
+        st.error(f"错误详情: {str(e)}")
+    
+    # 价格-销量关系
+    st.subheader("价格与销量关系")
+    df_price = df_filtered.copy()
+    df_price['均价'] = df_price['销额'] / df_price['销量']
+    
+    # 按价格分组
+    price_bins = [0, 1000, 2000, 3000, 5000, 8000, 10000, 15000, 20000, 50000]
+    price_labels = ['0-1k', '1k-2k', '2k-3k', '3k-5k', '5k-8k', '8k-10k', '10k-15k', '15k-20k', '20k+']
+    df_price['价格组'] = pd.cut(df_price['均价'], bins=price_bins, labels=price_labels, right=False)
+    
+    price_sales = df_price.groupby('价格组').agg({
         '销量': 'sum',
         '销额': 'sum'
     }).reset_index()
     
-    # 确保价格段有序
-    # 修改排序逻辑，处理新的价格段格式 (如A.0-999, B.1000-1999)
-    def extract_number(price_str):
-        # 处理带有字母前缀的情况 (如A.0-999)
-        if '.' in price_str:
-            try:
-                # 提取字母前缀作为首要排序依据
-                prefix = price_str.split('.')[0].strip()
-                # 如果只有一个字母，返回该字母的ASCII值
-                if len(prefix) == 1 and prefix.isalpha():
-                    return ord(prefix) - ord('A')  # A=0, B=1, C=2...
-                # 如果是多字母或非字母前缀，尝试提取数字部分
-                return int(price_str.split('.')[1].split('-')[0].strip())
-            except (ValueError, IndexError):
-                return 999999  # 放到最后
-        # 处理以"以上"结尾的情况，将其放到最后
-        elif '以上' in price_str:
-            return 999999
-        # 处理其他格式，尝试提取数字
-        else:
-            try:
-                import re
-                # 提取所有数字
-                numbers = re.findall(r'\d+', price_str)
-                if numbers:
-                    return int(numbers[0])
-                return 999999  # 如果没有数字，放到最后
-            except (ValueError, IndexError):
-                return 999999
-                    
-    # 使用新的排序逻辑，主要基于字母前缀顺序
-    price_segment_order = sorted(price_segment_sales['价格段'].unique(), key=extract_number)
+    # 防止空DataFrame
+    if not price_sales.empty:
+        # 使用销量作为固定指标
+        fig_price_sales = px.bar(
+            price_sales,
+            x='价格组',
+            y='销量',
+            color='价格组',
+            color_discrete_sequence=px.colors.qualitative.Set1
+        )
+        
+        # 更新价格销量关系
+        fig_price_sales.update_layout(
+            xaxis_title="价格段",
+            yaxis_title="销量(万台)",
+            showlegend=False,  # 设置x轴范围从15到120英寸
+        )
+        fig_price_sales.update_traces(
+            y=sales_to_wan(price_sales['销量']),
+            hovertemplate='%{x}: %{y:.1f}万台'
+        )
+        
+        st.plotly_chart(fig_price_sales, use_container_width=True)
+    else:
+        st.info("无法生成价格与销量关系图，数据不足。")
     
-    # 使用销量作为固定指标
-    fig_price_segment = px.bar(
-        price_segment_sales,
-        x='价格段',
-        y='销量',
-        color='销量',
-        color_continuous_scale=px.colors.sequential.Blues
-    )
-    
-    # 更新价格段分布
-    fig_price_segment.update_layout(
-        xaxis_title="价格段",
-        yaxis_title="销量(万台)",
-        xaxis={'categoryorder':'array', 'categoryarray':price_segment_order},  # 使用全部排序后的价格段
-        showlegend=False,  # 设置x轴范围从15到120英寸
-    )
-    fig_price_segment.update_traces(
-        y=sales_to_wan(price_segment_sales['销量']),
-        hovertemplate='%{x}: %{y:.1f}万台'
-    )
-    
-    st.plotly_chart(fig_price_segment, use_container_width=True)
-    
-    # 品牌TOP销量
+    # 品牌销量排行
     st.subheader("品牌销量排行")
     
-    brand_sales = df_filtered.groupby('品牌').agg({
-        '销量': 'sum',
-        '销额': 'sum'
-    }).reset_index()
-    
-    brand_sales['平均价格'] = brand_sales['销额'] / brand_sales['销量']
-    
-    # 固定使用销量指标
-    brand_sales = brand_sales.sort_values('销量', ascending=False).head(10)
-    
-    # 先转换销量到万台单位
-    brand_sales['销量_万台'] = sales_to_wan(brand_sales['销量'])
-    
-    fig_brand = px.bar(
-        brand_sales,
-        x='品牌',
-        y='销量_万台',
-        color='品牌',
-        color_discrete_map=BRAND_COLOR_MAP
-    )
-    
-    # 更新品牌销量排名
-    fig_brand.update_layout(
-        xaxis_title="品牌",
-        yaxis_title="销量(万台)",
-        showlegend=False,  # 设置x轴范围从15到120英寸,
-        hovermode='closest'
-    )
-    fig_brand.update_traces(
-        hovertemplate='%{x}: %{y:.1f}万台'
-    )
-    
-    st.plotly_chart(fig_brand, use_container_width=True)
+    try:
+        brand_sales = df_filtered.groupby('品牌').agg({
+            '销量': 'sum',
+            '销额': 'sum'
+        }).reset_index()
+        
+        if brand_sales.empty:
+            st.warning(f"所选时间段内没有品牌销量数据，请尝试选择其他时间段。")
+        else:
+            # 仅展示前10名
+            brand_sales = brand_sales.sort_values('销量', ascending=False).head(10)
+            
+            # 使用销量作为固定指标
+            fig_brand = px.bar(
+                brand_sales,
+                x='品牌',
+                y='销量',
+                color='销量',
+                color_continuous_scale=px.colors.sequential.Greens
+            )
+            
+            # 更新品牌销量排名
+            fig_brand.update_layout(
+                xaxis_title="品牌",
+                yaxis_title="销量(万台)",
+                xaxis={'categoryorder':'total descending'},  # 按总量降序排列
+                showlegend=False,
+            )
+            fig_brand.update_traces(
+                y=sales_to_wan(brand_sales['销量']),
+                hovertemplate='%{x}: %{y:.1f}万台'
+            )
+            
+            st.plotly_chart(fig_brand, use_container_width=True)
+    except Exception as e:
+        st.warning(f"无法显示品牌销量排行数据")
+        st.error(f"错误详情: {str(e)}")
     
     # 品牌销额排行
     st.subheader("品牌销额排行")
     
-    # 使用前面已经准备好的brand_sales数据，但重新排序
-    brand_revenue = brand_sales.copy()
-    brand_revenue = brand_revenue.sort_values('销额', ascending=False).head(10)
+    try:
+        brand_revenue = df_filtered.groupby('品牌').agg({
+            '销量': 'sum',
+            '销额': 'sum'
+        }).reset_index()
+        
+        if brand_revenue.empty:
+            st.warning(f"所选时间段内没有品牌销额数据，请尝试选择其他时间段。")
+        else:
+            # 仅展示前10名
+            brand_revenue = brand_revenue.sort_values('销额', ascending=False).head(10)
+            
+            # 添加亿元列
+            brand_revenue['销额_亿元'] = revenue_to_yi(brand_revenue['销额'])
+            
+            # 使用销额作为固定指标
+            fig_brand_revenue = px.bar(
+                brand_revenue,
+                x='品牌',
+                y='销额_亿元',
+                color='销额_亿元',
+                color_continuous_scale=px.colors.sequential.Blues
+            )
+            
+            # 更新品牌销额排名
+            fig_brand_revenue.update_layout(
+                xaxis_title="品牌",
+                yaxis_title="销额(亿元)",
+                xaxis={'categoryorder':'total descending'},  # 按总量降序排列
+                showlegend=False,
+            )
+            
+            st.plotly_chart(fig_brand_revenue, use_container_width=True)
+    except Exception as e:
+        st.warning(f"无法显示品牌销额排行数据")
+        st.error(f"错误详情: {str(e)}")
     
-    # 转换销额到亿元单位
-    brand_revenue['销额_亿元'] = revenue_to_yi(brand_revenue['销额'])
+    # 尺寸与价格的关系
+    st.subheader("尺寸与价格关系")
     
-    fig_brand_revenue = px.bar(
-        brand_revenue,
-        x='品牌',
-        y='销额_亿元',
-        color='品牌',
-        color_discrete_map=BRAND_COLOR_MAP
-    )
-    
-    # 更新品牌销额排名
-    fig_brand_revenue.update_layout(
-        xaxis_title="品牌",
-        yaxis_title="销额(亿元)",
-        showlegend=False,
-        hovermode='closest'
-    )
-    fig_brand_revenue.update_traces(
-        hovertemplate='%{x}: %{y:.2f}亿元'
-    )
-    
-    st.plotly_chart(fig_brand_revenue, use_container_width=True)
-    
-    # 各规格产品的平均价格与销量关系散点图
-    st.subheader("尺寸-价格-销量关系")
-    
-    size_price_sales = df_filtered.groupby(['尺寸', '品牌系']).agg({
-        '销量': 'sum',
-        '销额': 'sum'
-    }).reset_index()
-    
-    size_price_sales['平均价格'] = size_price_sales['销额'] / size_price_sales['销量']
-    
-    # 根据筛选条件确定Y轴范围
-    max_price = size_price_sales['平均价格'].max()
-    # 设置一个合理的Y轴上限
-    y_max = min(max(max_price * 1.2, 10000), 30000)
-    
-    fig_scatter = px.scatter(
-        size_price_sales,
-        x='尺寸',
-        y='平均价格',
-        # 确保销量为正值，并添加合适的乘数使气泡大小合适
-        size=size_price_sales['销量'].apply(lambda x: max(x, 0.1)),
-        color='品牌系',
-        hover_name='品牌系',
-        color_discrete_map=BRAND_SYSTEM_COLOR_MAP
-    )
-    
-    fig_scatter.update_layout(
-        xaxis_title="尺寸(英寸)",
-        yaxis_title="平均价格(元/台)",
-        yaxis=dict(range=[0, y_max])
-    )
-
-    
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    try:
+        size_price_sales = df_filtered.groupby('尺寸').agg({
+            '销量': 'sum',
+            '销额': 'sum'
+        }).reset_index()
+        
+        if size_price_sales.empty:
+            st.warning(f"所选时间段内没有尺寸数据，请尝试选择其他时间段。")
+        else:
+            size_price_sales['平均价格'] = size_price_sales['销额'] / size_price_sales['销量']
+            size_price_sales = size_price_sales.sort_values('尺寸')
+            
+            # 使用固定的均价表示
+            fig_size_price = px.scatter(
+                size_price_sales,
+                x='尺寸',
+                y='平均价格',
+                size='销量',
+                color='平均价格',
+                size_max=50,
+                color_continuous_scale=px.colors.sequential.Viridis
+            )
+            
+            # 更新尺寸价格关系
+            fig_size_price.update_layout(
+                xaxis_title="尺寸(英寸)",
+                yaxis_title="均价(元)",
+                showlegend=False,
+                xaxis=dict(range=[15, 120])  # 设置x轴范围从15到120英寸
+            )
+            
+            st.plotly_chart(fig_size_price, use_container_width=True)
+    except Exception as e:
+        st.warning(f"无法显示尺寸与价格关系图")
+        st.error(f"错误详情: {str(e)}")
     
     # 尺寸-价格-销额关系图
     st.subheader("尺寸-价格-销额关系")
     
-    # 按尺寸和价格区间汇总销售数据
-    # 先计算均价
-    df_price = df_filtered.copy()
-    df_price['均价'] = df_price['销额'] / df_price['销量']
-    
-    # 创建价格区间
-    def price_range(price):
-        if price < 2000:
-            return "2000元以下"
-        elif price < 4000:
-            return "2000-4000元"
-        elif price < 6000:
-            return "4000-6000元"
-        elif price < 8000:
-            return "6000-8000元"
+    try:
+        # 基于尺寸分析价格
+        df_price = df_filtered.copy()
+        df_price['均价'] = df_price['销额'] / df_price['销量']
+        
+        # 按尺寸和价格段分组
+        if '尺寸' in df_filtered.columns and not df_filtered['尺寸'].isnull().all():
+            # 对尺寸进行分箱
+            size_bins = [0, 32, 43, 55, 65, 75, 85, 100, 120, 10000]
+            size_labels = ['≤32', '33-43', '44-55', '56-65', '66-75', '76-85', '86-100', '101-120', '>120']
+            
+            df_price['尺寸区间'] = pd.cut(df_price['尺寸'], bins=size_bins, labels=size_labels, right=False)
+            
+            # 按尺寸区间和价格区间分组
+            size_price_revenue = df_price.groupby(['尺寸区间', '价格段']).agg({
+                '销量': 'sum',
+                '销额': 'sum',
+            }).reset_index()
+            
+            if not size_price_revenue.empty:
+                size_price_revenue['均价'] = size_price_revenue['销额'] / size_price_revenue['销量']
+                
+                # 确保销额是正值
+                size_price_revenue['销额_正值'] = size_price_revenue['销额'].apply(lambda x: max(x, 0))
+                
+                # 创建热力图
+                fig_heatmap = px.density_heatmap(
+                    size_price_revenue,
+                    x='尺寸区间',
+                    y='价格段',
+                    z='销量',
+                    color_continuous_scale=px.colors.sequential.YlOrRd,
+                    title="尺寸-价格热力图 (销量)",
+                )
+                
+                # 更新热力图
+                fig_heatmap.update_layout(
+                    xaxis_title="尺寸区间",
+                    yaxis_title="价格段",
+                    xaxis={'categoryorder':'array', 'categoryarray':size_labels},
+                    yaxis={'categoryorder':'array', 'categoryarray':price_segment_order},
+                )
+                
+                st.plotly_chart(fig_heatmap, use_container_width=True)
+                
+                # 创建3D气泡图
+                fig_bubble = px.scatter_3d(
+                    size_price_revenue,
+                    x='尺寸区间',
+                    y='价格段',
+                    z='均价',
+                    size='销额_正值',  # 使用经过处理的非负销额值
+                    color='销量',
+                    color_continuous_scale=px.colors.sequential.Plasma,
+                    opacity=0.7,
+                    title="尺寸-价格-均价-销额关系图",
+                    labels={
+                        '尺寸区间': '尺寸区间',
+                        '价格段': '价格段',
+                        '均价': '实际均价(元)',
+                        '销量': '销量(台)'
+                    },
+                    hover_name='尺寸区间',
+                    hover_data={
+                        '尺寸区间': True,
+                        '价格段': True,
+                        '均价': ':.0f',
+                        '销额': ':,.2f'
+                    },
+                    height=700
+                )
+                
+                fig_bubble.update_layout(
+                    scene=dict(
+                        xaxis_title='尺寸区间',
+                        yaxis_title='价格段',
+                        zaxis_title='均价(元)',
+                    ),
+                )
+                
+                st.plotly_chart(fig_bubble, use_container_width=True)
+            else:
+                st.warning("尺寸和价格段组合后没有足够数据生成关系图")
         else:
-            return "8000元以上"
-
-    df_price['价格段'] = df_price['均价'].apply(price_range)
-
-    # 按尺寸和价格段汇总
-    size_price_revenue = df_price.groupby(['尺寸', '价格段']).agg({
-        '销额': 'sum',
-        '销量': 'sum'
-    }).reset_index()
-
-    # 计算均价
-    size_price_revenue['均价'] = size_price_revenue['销额'] / size_price_revenue['销量']
-
-    # 确保销额是正值
-    size_price_revenue['销额_正值'] = size_price_revenue['销额'].apply(lambda x: max(x, 0))
-
-    # 价格段的顺序
-    price_order = ["2000元以下", "2000-4000元", "4000-6000元", "6000-8000元", "8000元以上"]
-    
-    # 检查每个价格段是否在数据中
-    existing_price_categories = size_price_revenue['价格段'].unique()
-    price_order = [p for p in price_order if p in existing_price_categories]
-    
-    # 创建价格段的分类数据类型
-    size_price_revenue['价格段'] = pd.Categorical(size_price_revenue['价格段'], categories=price_order, ordered=True)
-
-    # 创建价格段的颜色映射
-    price_color_map = {
-        "2000元以下": COLOR_PALETTE[0],
-        "2000-4000元": COLOR_PALETTE[1],
-        "4000-6000元": COLOR_PALETTE[2],
-        "6000-8000元": COLOR_PALETTE[3],
-        "8000元以上": COLOR_PALETTE[4]
-    }
-    
-    # 根据筛选条件确定Y轴范围
-    max_price = size_price_revenue['均价'].max()
-    # 设置一个合理的Y轴上限
-    y_max = min(max(max_price * 1.2, 10000), 30000)
-
-    # 创建气泡图
-    fig_size_price_bubble = px.scatter(
-        size_price_revenue,
-        x='尺寸',
-        y='均价',
-        size='销额_正值',  # 使用经过处理的非负销额值
-        color='价格段',
-        hover_name='价格段',
-        color_discrete_map=price_color_map
-    )
-
-    # 设置图表布局
-    fig_size_price_bubble.update_layout(
-        xaxis_title="尺寸(英寸)",
-        yaxis_title="均价(元/台)",
-        yaxis=dict(range=[0, y_max]),
-        legend_title="价格段"
-    )
-
-    # 修改悬停信息
-    fig_size_price_bubble.update_traces(
-        hovertemplate='<b>%{hovertext}</b><br>尺寸: %{x}寸<br>均价: %{y:.2f}元<br>销售额: %{customdata[0]:.2f}元'
-    )
-
-    # 添加自定义数据，用于悬停显示
-    fig_size_price_bubble.update_traces(
-        customdata=size_price_revenue[['销额']]
-    )
-
-    st.plotly_chart(fig_size_price_bubble, use_container_width=True)
+            st.warning("缺少尺寸数据，无法生成尺寸-价格-销额关系图")
+    except Exception as e:
+        st.warning(f"无法显示尺寸-价格-销额关系图")
+        st.error(f"错误详情: {str(e)}")
     
     # 添加按品牌系分类的尺寸-价格-销额关系图
     st.subheader("按品牌系分类的尺寸-价格-销额关系图")
     
     # 按尺寸和品牌系分组，计算平均价格和总销额
-    brand_size_df = df_filtered.copy()
+    brand_size_df = df_price.groupby(['尺寸区间', '品牌系']).agg({
+        '销量': 'sum',
+        '销额': 'sum'
+    }).reset_index()
     
-    # 添加均价列
     brand_size_df['均价'] = brand_size_df['销额'] / brand_size_df['销量']
     
-    # 对均价进行过滤，移除异常值
-    brand_size_df = brand_size_df[brand_size_df['均价'] > 100]  # 移除价格过低的异常值
-    brand_size_df = brand_size_df[brand_size_df['均价'] < 50000]  # 移除价格过高的异常值
-    
-    # 按照品牌系和尺寸分组
-    brand_size_group = brand_size_df.groupby(['品牌系', '尺寸']).agg({
-        '销额': 'sum',
+    # 选择重要品牌系显示
+    main_brand_systems = brand_size_df.groupby('品牌系')['销量'].sum().nlargest(5).index.tolist()
+    brand_size_group = brand_size_df[brand_size_df['品牌系'].isin(main_brand_systems)].groupby(['尺寸区间', '品牌系']).agg({
         '销量': 'sum',
+        '销额': 'sum',
         '均价': 'mean'
     }).reset_index()
     
     # 确保销额是正值
     brand_size_group['销额_正值'] = brand_size_group['销额'].apply(lambda x: max(x, 0))
     
-    # 计算最大平均价格并设置Y轴范围
-    max_price = brand_size_group['均价'].max()
-    y_max = min(max(max_price * 1.2, 10000), 30000)
-    
-    # 创建气泡图
-    fig_brand_size_price = px.scatter(
+    # 创建3D散点图
+    fig_brand_size = px.scatter_3d(
         brand_size_group,
-        x='尺寸',
-        y='均价',
+        x='尺寸区间',
+        y='品牌系',
+        z='均价',
         size='销额_正值',  # 使用经过处理的非负销额值
         color='品牌系',
-        color_discrete_map=BRAND_SYSTEM_COLOR_MAP,  # 使用品牌系颜色映射
-        size_max=50,
+        color_discrete_map=BRAND_SYSTEM_COLOR_MAP,
+        opacity=0.8,
+        title="品牌系-尺寸-均价-销额关系图",
         hover_name='品牌系',
         hover_data={
-            '尺寸': True,
-            '均价': ':.2f',
+            '尺寸区间': True,
+            '品牌系': True,
+            '均价': ':.0f',
             '销额': ':,.2f'
-        }
+        },
+        height=700
     )
     
     # 更新图表布局
-    fig_brand_size_price.update_layout(
-        xaxis_title="尺寸(英寸)",
-        yaxis_title="均价(元/台)",
-        yaxis=dict(range=[0, y_max]),
-        height=500
+    fig_brand_size.update_layout(
+        scene=dict(
+            xaxis_title='尺寸区间',
+            yaxis_title='品牌系',
+            zaxis_title='均价(元)',
+        ),
+        margin=dict(l=0, r=0, b=0, t=30)
     )
     
-    # 修改悬停信息
-    fig_brand_size_price.update_traces(
-        hovertemplate='<b>%{hovertext}</b><br>尺寸: %{x}寸<br>均价: %{y:.2f}元<br>销售额: %{marker.size:,.2f}元'
-    )
-    
-    # 显示图表
-    st.plotly_chart(fig_brand_size_price, use_container_width=True)
-    
+    st.plotly_chart(fig_brand_size, use_container_width=True)
+
 # Tab 4: 渠道分析
 with tab4:
     # 添加渐变背景标题
@@ -2085,19 +2344,20 @@ with tab6:
         # 小米高端产品占比
         xiaomi_high_end_percent = len(xiaomi_high_end) / len(xiaomi_data) * 100 if len(xiaomi_data) > 0 else 0
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1);">
-            <div style="font-size:16px; color:#666;">高端产品占比</div>
-            <div style="font-size:26px; color:#ff6700; font-weight:bold;">{xiaomi_high_end_percent:.1f}%</div>
-            <div style="font-size:12px; color:#999;">高端产品定义：均价≥{high_end_threshold}元</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">高端产品占比</div>
+            <div style="font-size:32px; color:#ff8630; font-weight:bold; margin-bottom:5px;">{xiaomi_high_end_percent:.1f}%</div>
+            <div style="font-size:13px; color:#999;">高端产品定义：均价≥{high_end_threshold}元</div>
         </div>
         """, unsafe_allow_html=True)
         
         # 小米高端产品销量占比
         xiaomi_high_end_sales_percent = xiaomi_high_end['销量'].sum() / xiaomi_data['销量'].sum() * 100 if xiaomi_data['销量'].sum() > 0 else 0
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1); margin-top:10px;">
-            <div style="font-size:16px; color:#666;">高端产品销量占比</div>
-            <div style="font-size:26px; color:#ff6700; font-weight:bold;">{xiaomi_high_end_sales_percent:.1f}%</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center; margin-top:20px;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">高端产品销量占比</div>
+            <div style="font-size:32px; color:#ff8630; font-weight:bold; margin-bottom:5px;">{xiaomi_high_end_sales_percent:.1f}%</div>
+            <div style="font-size:13px; color:#999;">&nbsp;</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -2105,22 +2365,21 @@ with tab6:
         # 小米MiniLED产品占比
         xiaomi_miniled_percent = len(xiaomi_miniled) / len(xiaomi_data) * 100 if len(xiaomi_data) > 0 else 0
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1);">
-            <div style="font-size:16px; color:#666;">MiniLED产品占比</div>
-            <div style="font-size:26px; color:#2196f3; font-weight:bold;">{xiaomi_miniled_percent:.1f}%</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">MiniLED产品占比</div>
+            <div style="font-size:32px; color:#33bcff; font-weight:bold; margin-bottom:5px;">{xiaomi_miniled_percent:.1f}%</div>
+            <div style="font-size:13px; color:#999;">&nbsp;</div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # 小米MiniLED产品销量占比
-        xiaomi_miniled_sales_percent = xiaomi_miniled['销量'].sum() / xiaomi_data['销量'].sum() * 100 if xiaomi_data['销量'].sum() > 0 else 0
         
         # 小米MiniLED产品销售额占比
         xiaomi_miniled_revenue_percent = xiaomi_miniled['销额'].sum() / xiaomi_data['销额'].sum() * 100 if xiaomi_data['销额'].sum() > 0 else 0
         
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1); margin-top:10px;">
-            <div style="font-size:16px; color:#666;">MiniLED产品销售额占比</div>
-            <div style="font-size:26px; color:#2196f3; font-weight:bold;">{xiaomi_miniled_revenue_percent:.1f}%</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center; margin-top:20px;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">MiniLED产品销售额占比</div>
+            <div style="font-size:32px; color:#33bcff; font-weight:bold; margin-bottom:5px;">{xiaomi_miniled_revenue_percent:.1f}%</div>
+            <div style="font-size:13px; color:#999;">&nbsp;</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -2132,19 +2391,20 @@ with tab6:
         price_color = "#4CAF50" if price_diff >= 0 else "#F44336"
         
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1);">
-            <div style="font-size:16px; color:#666;">平均售价</div>
-            <div style="font-size:26px; color:#ff6700; font-weight:bold;">{xiaomi_avg_price:.0f}元</div>
-            <div style="font-size:14px; color:{price_color};">较市场均价: {price_diff:+.0f}元</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">平均售价</div>
+            <div style="font-size:32px; color:#ff8630; font-weight:bold; margin-bottom:5px;">{xiaomi_avg_price:.0f}元</div>
+            <div style="font-size:13px; color:{price_color};">较市场均价: {price_diff:+.0f}元</div>
         </div>
         """, unsafe_allow_html=True)
         
         # 小米高端产品平均价格
         xiaomi_high_end_avg_price = xiaomi_high_end['销额'].sum() / xiaomi_high_end['销量'].sum() if xiaomi_high_end['销量'].sum() > 0 else 0
         st.markdown(f"""
-        <div style="text-align:center; background-color:white; padding:10px; border-radius:5px; box-shadow:0 0 5px rgba(0,0,0,0.1); margin-top:10px;">
-            <div style="font-size:16px; color:#666;">高端产品平均售价</div>
-            <div style="font-size:26px; color:#ff6700; font-weight:bold;">{xiaomi_high_end_avg_price:.0f}元</div>
+        <div style="text-align:center; background-color:white; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.08); height:140px; display:flex; flex-direction:column; justify-content:center; margin-top:20px;">
+            <div style="font-size:18px; color:#666; margin-bottom:10px;">高端产品平均售价</div>
+            <div style="font-size:32px; color:#ff8630; font-weight:bold; margin-bottom:5px;">{xiaomi_high_end_avg_price:.0f}元</div>
+            <div style="font-size:13px; color:#999;">&nbsp;</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -2900,9 +3160,9 @@ with tab8:
     
     # 小米MiniLED发展历程数据
     xiaomi_miniled_data = {
-        '时间': ['2023年', '2024年', '2025年1月'],
-        '销量(万台)': [7.3, 105.8, 16.6],
-        '渗透率(%)': [1.0, 16.1, 20.5]
+        '时间': ['2023年', '2024年', '2025年1月', '2025年2月'],
+        '销量(万台)': [7.3, 105.8, 16.6, 10.4],
+        '渗透率(%)': [1.0, 16.1, 20.5, 21.8]
     }
     xiaomi_df = pd.DataFrame(xiaomi_miniled_data)
     
@@ -2943,6 +3203,7 @@ with tab8:
         
         # 添加第二个Y轴
         fig_combined.update_layout(
+            height=400,  # 添加高度设置，与右侧图表保持一致
             yaxis=dict(title=dict(text='销量(万台)')),
             yaxis2=dict(
                 title=dict(
@@ -2961,7 +3222,7 @@ with tab8:
                 xanchor='right',
                 x=1
             ),
-            margin=dict(t=40),
+            margin=dict(t=40, b=10),  # 添加底部边距，与右侧图表保持一致
             bargap=0.4
         )
         
@@ -3038,36 +3299,6 @@ with tab8:
     # 小米MiniLED增长率计算
     growth_2023_2024 = (16.1 - 1.0) / 1.0 * 100  # 2023年到2024年的增长率
     
-    # 创建增长趋势可视化
-    st.markdown("### 小米MiniLED技术发展历程")
-    
-    cols = st.columns([1, 4, 1])
-    
-    with cols[1]:
-        growth_display = f"""
-        <div style="background-color:white; padding:30px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1); margin-top:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;">
-                <div style="text-align:center; width:33%;">
-                    <div style="font-size:18px; color:#666;">2023年</div>
-                    <div style="font-size:24px; font-weight:bold; color:#ff8630; margin:10px 0;">跟跑阶段</div>
-                    <div style="font-size:36px; font-weight:bold; color:#ff8630;">1.0%</div>
-                    <div style="font-size:14px; color:#666;">渗透率</div>
-                </div>
-                <div style="flex-grow:1; height:4px; background:linear-gradient(to right, #ff8630, #33bcff); position:relative; margin:0 15px;">
-                    <div style="position:absolute; top:-25px; left:50%; transform:translateX(-50%); background-color:#fff; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; box-shadow:0 0 10px rgba(0,0,0,0.1);">
-                        <span style="font-weight:bold; color:#607d8b;">→</span>
-                    </div>
-                </div>
-                <div style="text-align:center; width:33%;">
-                    <div style="font-size:18px; color:#666;">2025年1月</div>
-                    <div style="font-size:24px; font-weight:bold; color:#33bcff; margin:10px 0;">并跑阶段</div>
-                    <div style="font-size:36px; font-weight:bold; color:#33bcff;">20.5%</div>
-                    <div style="font-size:14px; color:#666;">渗透率</div>
-                </div>
-            </div>
-        </div>
-        """
-        st.markdown(growth_display, unsafe_allow_html=True)
     
     # 行业对比和分析观点
     st.markdown("### 市场分析与战略建议")
@@ -3196,7 +3427,7 @@ with tab8:
             <ul style="padding-left:20px; margin-top:15px;">
                 <li><span style="font-weight:bold;">行业排名：</span>小米在MiniLED渗透率上已超越创维系，成为行业第三</li>
                 <li><span style="font-weight:bold;">市场差距：</span>与行业领先者TCL系相比，仍有{tcl_lead:.1f}个百分点的差距</li>
-                <li><span style="font-weight:bold;">增长势头：</span>从2023年到2025年1月渗透率增长了19.50个百分点，增长势头强劲</li>
+                <li><span style="font-weight:bold;">增长势头：</span>从2023年到2025年2月渗透率增长了21.80个百分点，增长势头强劲</li>
                 <li><span style="font-weight:bold;">技术转变：</span>已实现从"跟跑"到"并跑"的转变，证明技术储备和产品开发的进步</li>
             </ul>
         </div>
