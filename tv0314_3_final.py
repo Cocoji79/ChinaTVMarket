@@ -6,11 +6,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import hashlib
 import random
 import base64
+import re
+import time
 
 # 设置用户名和密码
 USERNAME = "MiTV"
@@ -343,17 +345,21 @@ def get_connection():
     # 检查是否在Streamlit Cloud环境中
     is_cloud = os.environ.get("STREAMLIT_SERVER_IP") is not None
     
-    # 尝试多个可能的数据库路径
+    # 调整可能的数据库路径顺序，确保优先使用新路径
     possible_paths = [
-        "/mount/src/ChinaTVMarket/202301-202501tv_avc_bi_jd_new1.db",  # Streamlit Cloud路径
-        "202301-202501tv_avc_bi_jd_new1.db",                 # 相对路径
-        "/Users/coco/Documents/StreamlitApp/ChinaTVMarket/202301-202501tv_avc_bi_jd_new1.db",  # 本地绝对路径
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202501tv_avc_bi_jd_new1.db")  # 脚本同目录
+        # 优先查找本地新路径
+        "/Users/coco/Documents/StreamlitApp/ChinaTVMarket/202301-202502tv_avc_bi_jd.db",  # 本地绝对路径
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202502tv_avc_bi_jd.db"),  # 脚本同目录
+        # 云环境路径
+        "/mount/src/ChinaTVMarket/202301-202502tv_avc_bi_jd.db",  # Streamlit Cloud路径
+        "202301-202502tv_avc_bi_jd.db.db",                 # 相对路径
     ]
     
-    # 打印当前工作目录和文件列表，帮助调试
+    # 打印更多调试信息
     st.sidebar.markdown("### 调试信息")
     st.sidebar.text(f"当前目录: {os.getcwd()}")
+    st.sidebar.text(f"数据库连接尝试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
     if is_cloud:
         st.sidebar.text("Streamlit Cloud环境")
     
@@ -361,18 +367,31 @@ def get_connection():
     for db_path in possible_paths:
         try:
             if os.path.exists(db_path):
+                # 检查文件大小
+                file_size = os.path.getsize(db_path)
                 st.sidebar.text(f"找到数据库: {db_path}")
-                return sqlite3.connect(db_path)
+                st.sidebar.text(f"数据库大小: {file_size/1024:.2f} KB")
+                
+                if file_size > 0:
+                    # 记录实际使用的数据库路径
+                    st.session_state['actual_db_path'] = db_path
+                    st.session_state['demo_data_used'] = False
+                    return sqlite3.connect(db_path)
+                else:
+                    st.sidebar.warning(f"⚠️ 数据库文件存在但为空: {db_path}")
         except Exception as e:
+            st.sidebar.text(f"连接错误: {str(e)[:50]}")
             continue
     
     # 如果所有路径都失败，返回None，后续将使用模拟数据
     st.warning("⚠️ 无法连接到数据库，将使用模拟数据进行展示")
+    st.session_state['demo_data_used'] = True
     return None
 
 # 生成示例数据
 def generate_demo_data():
     """生成模拟销售数据用于演示"""
+    st.session_state['demo_data_used'] = True
     st.info("🔔 当前展示的是模拟数据，仅用于演示界面功能")
     
     # 创建日期范围
@@ -456,9 +475,13 @@ def execute_query(query):
             conn.close()
 
 # 数据加载函数
-@st.cache_data(ttl=60)  # 设置60秒的缓存过期时间，确保数据定期刷新
+@st.cache_data(ttl=10, max_entries=1)  # 缩短缓存时间到10秒，减少缓存条目数以加快清理
 def load_data():
     """加载销售数据并进行基础处理"""
+    # 打印当前时间，用于确认数据重新加载
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.sidebar.text(f"数据加载时间: {current_time}")
+    
     # 加载销售数据
     try:
         sales_df = execute_query("SELECT * FROM sales_data")
@@ -492,6 +515,13 @@ except Exception as e:
 
 # 侧边栏 - 筛选器
 st.sidebar.title("数据筛选")
+
+# 添加清除缓存按钮
+if st.sidebar.button("🔄 强制刷新数据", help="点击此按钮清除缓存并重新加载最新数据"):
+    # 清除特定函数的缓存
+    st.cache_data.clear()
+    st.success("✅ 缓存已清除！正在重新加载数据...")
+    st.rerun()  # 重新运行应用
 
 # 时间范围选择 - 改为年份多选
 available_years = sorted(df['年份'].unique().tolist())
@@ -540,8 +570,13 @@ metric_options = {
 # 主页面
 st.title("电视销售数据分析平台")
 
-# 显示数据库更新通知
-st.success("数据库已更新至最新版本：/Users/coco/Documents/TV/202301-202501tv_avc_bi_jd_new1.db，包含2023年1月至2025年1月的销售数据。数据总记录数：346,810条。")
+# 显示数据库信息
+if 'demo_data_used' in st.session_state and st.session_state.demo_data_used:
+    st.info("🔔 当前展示的是模拟数据，仅用于演示界面功能")
+else:
+    # 更新消息，显示实际使用的数据库
+    db_path = st.session_state.get('actual_db_path', "/Users/coco/Documents/StreamlitApp/ChinaTVMarket/202301-202502tv_avc_bi_jd.db")
+    st.success(f"数据库已连接: {db_path}，包含2023年1月至2025年1月的销售数据。")
 
 # 修复数据范围显示
 if selected_years:
