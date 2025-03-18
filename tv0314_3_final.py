@@ -345,10 +345,10 @@ def get_connection():
     
     # 尝试多个可能的数据库路径
     possible_paths = [
-        "/mount/src/mitv/202301-202501tv_avc_bi_jd.db",  # Streamlit Cloud路径
-        "202301-202501tv_avc_bi_jd.db",                 # 相对路径
-        "/Users/coco/Documents/TV/202301-202501tv_avc_bi_jd_new1.db",  # 本地绝对路径
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202501tv_avc_bi_jd.db")  # 脚本同目录
+        "/mount/src/ChinaTVMarket/202301-202501tv_avc_bi_jd_new1.db",  # Streamlit Cloud路径
+        "202301-202501tv_avc_bi_jd_new1.db",                 # 相对路径
+        "/Users/coco/Documents/StreamlitApp/ChinaTVMarket/202301-202501tv_avc_bi_jd_new1.db",  # 本地绝对路径
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "202301-202501tv_avc_bi_jd_new1.db")  # 脚本同目录
     ]
     
     # 打印当前工作目录和文件列表，帮助调试
@@ -580,7 +580,7 @@ with tab1:
         st.markdown(f"<h1 style='text-align: center;'>{total_sales/10000:.0f} 万台</h1>", unsafe_allow_html=True)
     
     with col2:
-        total_revenue = df_filtered['销额'].sum()
+        total_revenue = df_filtered['销售额'].sum()
         # 修改单位为亿元，不显示小数，增大字体
         st.markdown(f"<h2 style='text-align: center;'>总销售额</h2>", unsafe_allow_html=True)
         st.markdown(f"<h1 style='text-align: center;'>{total_revenue/100000000:.0f} 亿元</h1>", unsafe_allow_html=True)
