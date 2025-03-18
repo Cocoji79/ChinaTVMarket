@@ -409,7 +409,7 @@ def generate_demo_data():
                 '时间': time_code,
                 '品牌': brand,
                 '销量': sales,
-                '销售额': revenue,
+                '销额': revenue,
                 '均价': price,
                 '市场份额': market_share
             })
@@ -580,7 +580,7 @@ with tab1:
         st.markdown(f"<h1 style='text-align: center;'>{total_sales/10000:.0f} 万台</h1>", unsafe_allow_html=True)
     
     with col2:
-        total_revenue = df_filtered['销售额'].sum()
+        total_revenue = df_filtered['销额'].sum()
         # 修改单位为亿元，不显示小数，增大字体
         st.markdown(f"<h2 style='text-align: center;'>总销售额</h2>", unsafe_allow_html=True)
         st.markdown(f"<h1 style='text-align: center;'>{total_revenue/100000000:.0f} 亿元</h1>", unsafe_allow_html=True)
@@ -2908,10 +2908,12 @@ with tab8:
         
         # 添加第二个Y轴
         fig_combined.update_layout(
-            yaxis=dict(title='销量(万台)'),
+            yaxis=dict(title=dict(text='销量(万台)')),
             yaxis2=dict(
-                title='渗透率(%)',
-                titlefont=dict(color=COLOR_MI_BLUE),
+                title=dict(
+                    text='渗透率(%)',
+                    font=dict(color=COLOR_MI_BLUE)
+                ),
                 tickfont=dict(color=COLOR_MI_BLUE),
                 overlaying='y',
                 side='right'
