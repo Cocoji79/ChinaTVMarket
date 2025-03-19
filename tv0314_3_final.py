@@ -13,10 +13,14 @@ import random
 import base64
 import re
 import time
+import json
 
 # 设置用户名和密码
 USERNAME = "MiTV"
 PASSWORD = "tIuUrhH5"
+
+# 登录记录文件路径
+LOGIN_RECORD_FILE = "login_record.json"
 
 # 辅助函数：转换销量为万台
 def sales_to_wan(sales):
@@ -194,11 +198,50 @@ def check_password():
     if "login_error" not in st.session_state:
         st.session_state["login_error"] = False
     
+    # 加载或初始化登录记录
+    def load_login_records():
+        if os.path.exists(LOGIN_RECORD_FILE):
+            try:
+                with open(LOGIN_RECORD_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                return {"total_logins": 0, "last_login": "", "logins_by_day": {}}
+        else:
+            return {"total_logins": 0, "last_login": "", "logins_by_day": {}}
+    
+    # 保存登录记录
+    def save_login_record():
+        login_records = load_login_records()
+        current_time = datetime.now()
+        current_date = current_time.strftime("%Y-%m-%d")
+        current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 更新总登录次数
+        login_records["total_logins"] += 1
+        login_records["last_login"] = current_time_str
+        
+        # 更新每日登录次数
+        if current_date not in login_records["logins_by_day"]:
+            login_records["logins_by_day"][current_date] = 0
+        login_records["logins_by_day"][current_date] += 1
+        
+        # 保存登录记录
+        try:
+            with open(LOGIN_RECORD_FILE, 'w') as f:
+                json.dump(login_records, f)
+        except Exception as e:
+            st.warning(f"无法保存登录记录：{e}")
+    
     # 验证函数
     def password_entered():
         if st.session_state["username"] == USERNAME and st.session_state["password"] == PASSWORD:
             st.session_state["authenticated"] = True
             st.session_state["login_error"] = False
+            # 记录登录信息
+            save_login_record()
+            # 加载登录统计到会话状态
+            login_records = load_login_records()
+            st.session_state["login_records"] = login_records
         else:
             st.session_state["authenticated"] = False
             st.session_state["login_error"] = True
@@ -356,12 +399,13 @@ def get_connection():
     ]
     
     # 打印更多调试信息
-    st.sidebar.markdown("### 调试信息")
-    st.sidebar.text(f"当前目录: {os.getcwd()}")
-    st.sidebar.text(f"数据库连接尝试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    # st.sidebar.markdown("### 调试信息")
+    # st.sidebar.text(f"当前目录: {os.getcwd()}")
+    # st.sidebar.text(f"数据库连接尝试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     if is_cloud:
-        st.sidebar.text("Streamlit Cloud环境")
+        # st.sidebar.text("Streamlit Cloud环境")
+        pass
     
     # 尝试连接所有可能的路径
     for db_path in possible_paths:
@@ -369,8 +413,8 @@ def get_connection():
             if os.path.exists(db_path):
                 # 检查文件大小
                 file_size = os.path.getsize(db_path)
-                st.sidebar.text(f"找到数据库: {db_path}")
-                st.sidebar.text(f"数据库大小: {file_size/1024:.2f} KB")
+                # st.sidebar.text(f"找到数据库: {db_path}")
+                # st.sidebar.text(f"数据库大小: {file_size/1024:.2f} KB")
                 
                 if file_size > 0:
                     # 记录实际使用的数据库路径
@@ -378,9 +422,10 @@ def get_connection():
                     st.session_state['demo_data_used'] = False
                     return sqlite3.connect(db_path)
                 else:
-                    st.sidebar.warning(f"⚠️ 数据库文件存在但为空: {db_path}")
+                    # st.sidebar.warning(f"⚠️ 数据库文件存在但为空: {db_path}")
+                    pass
         except Exception as e:
-            st.sidebar.text(f"连接错误: {str(e)[:50]}")
+            # st.sidebar.text(f"连接错误: {str(e)[:50]}")
             continue
     
     # 如果所有路径都失败，返回None，后续将使用模拟数据
@@ -521,7 +566,7 @@ def load_data():
     """加载销售数据并进行基础处理"""
     # 打印当前时间，用于确认数据重新加载
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.sidebar.text(f"数据加载时间: {current_time}")
+    # st.sidebar.text(f"数据加载时间: {current_time}")
     
     # 加载销售数据
     try:
@@ -641,6 +686,37 @@ if selected_price != '全部':
     # 筛选大于等于所选价格的产品
     # 计算每个产品的平均价格（销额/销量）
     df_filtered = df_filtered[df_filtered['销额'] / df_filtered['销量'] >= price_value]
+
+# 添加登录统计信息显示
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 登录统计")
+
+if "login_records" in st.session_state:
+    login_records = st.session_state["login_records"]
+    st.sidebar.text(f"总登录次数: {login_records['total_logins']}")
+    st.sidebar.text(f"上次登录: {login_records['last_login']}")
+    
+    # 显示今日登录次数
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_logins = login_records["logins_by_day"].get(today, 0)
+    st.sidebar.text(f"今日登录: {today_logins}次")
+else:
+    # 如果会话状态中没有登录记录（可能是第一次登录后刷新页面），尝试从文件加载
+    try:
+        if os.path.exists(LOGIN_RECORD_FILE):
+            with open(LOGIN_RECORD_FILE, 'r') as f:
+                login_records = json.load(f)
+                st.sidebar.text(f"总登录次数: {login_records['total_logins']}")
+                st.sidebar.text(f"上次登录: {login_records['last_login']}")
+                
+                # 显示今日登录次数
+                today = datetime.now().strftime("%Y-%m-%d")
+                today_logins = login_records["logins_by_day"].get(today, 0)
+                st.sidebar.text(f"今日登录: {today_logins}次")
+        else:
+            st.sidebar.text("暂无登录记录")
+    except:
+        st.sidebar.text("无法加载登录记录")
 
 # 移除尺寸范围滑块和分析指标单选按钮
 # 默认使用销量作为分析指标
